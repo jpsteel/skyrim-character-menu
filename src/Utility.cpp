@@ -455,13 +455,14 @@ void ResetCamera() {
 
     //setting timescale back to its former value
     RE::TESForm::LookupByID<RE::TESGlobal>(0x3A)->value = timescale;
+    auto* manakinRace = RE::TESForm::LookupByID<RE::TESRace>(0x10760A);
 
     //re-enables AI
     auto processLists = RE::ProcessLists::GetSingleton();
     if (processLists) {
         for (auto handle : processLists->highActorHandles) {
             auto actor = handle.get().get();
-            if (!actor || actor->IsPlayerRef() || IsPlayersMount(actor)) continue;
+            if (!actor || actor->IsPlayerRef() || IsPlayersMount(actor) || (manakinRace && actor->GetRace() == manakinRace)) continue;
             UnfreezeNPC(actor);
         }
     }
