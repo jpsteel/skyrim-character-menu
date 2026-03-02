@@ -578,6 +578,8 @@ namespace Scaleform {
             match = GetBestMatchingClass(classicClassesFirmament, skillLevels);
         } else if (IsPluginLoaded("Constellations")) {
             match = GetBestMatchingClass(classicClassesConstellations, skillLevels);
+        } else if (IsPluginLoaded("Apprentice")) {
+            match = GetApprenticeClass(apprenticeClasses);
         } else {
             match = GetBestMatchingClass(classicClasses, skillLevels);
         }

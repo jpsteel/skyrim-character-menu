@@ -168,6 +168,8 @@ void FreezeNPC(RE::Actor* a_actor);
 void UnfreezeNPC(RE::Actor* a_actor);
 const TESClass* GetBestMatchingClass(const std::vector<TESClass>& classes,
                                      const std::unordered_map<std::string, float>& skillLevels);
+const TESClass* GetApprenticeClass(const std::map<int, TESClass>& classes);
+
 void LoadFactionDefinitions();
 static bool IsQuestStageAtLeast(const std::string& questEdid, std::int32_t requiredStage);
 const std::vector<FactionDef>& GetFactionDefinitions();
