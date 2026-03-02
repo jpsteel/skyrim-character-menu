@@ -19,7 +19,7 @@ RE::BSEventNotifyControl EventProcessor::ProcessEvent(const RE::MenuOpenCloseEve
         auto player = RE::PlayerCharacter::GetSingleton();
         auto ui = RE::UI::GetSingleton();
         if (auto menu = ui->GetMenu(Scaleform::CharacterSheet::MENU_NAME)) {
-            RE::Actor* target;
+            /*RE::Actor* target;
             auto* processLists = RE::ProcessLists::GetSingleton();
             if (!processLists) return RE::BSEventNotifyControl::kContinue;
 
@@ -36,8 +36,8 @@ RE::BSEventNotifyControl EventProcessor::ProcessEvent(const RE::MenuOpenCloseEve
                     target = actor;
                     break;
                 }
-            }
-            //auto* target = RE::PlayerCharacter::GetSingleton();
+            }*/
+            auto* target = RE::PlayerCharacter::GetSingleton();
 
             Scaleform::CharacterSheet::SetGenericData(target, menu);
             Scaleform::CharacterSheet::SetAttributes(target, menu);
