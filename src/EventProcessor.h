@@ -4,11 +4,6 @@
 #include "RE/Skyrim.h"
 #include "SKSE/SKSE.h"
 
-struct StandingStoneInfo {
-    std::string name;
-    std::string descriptionEditorId;
-};
-
 class EventProcessor : public RE::BSTEventSink<RE::InputEvent*>, public RE::BSTEventSink<RE::MenuOpenCloseEvent>, public RE::BSTEventSink<SKSE::ModCallbackEvent> {
 public:
     static EventProcessor* GetSingleton() {

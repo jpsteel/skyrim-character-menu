@@ -15,14 +15,34 @@
 #include "RE/Skyrim.h"
 
 extern int menuHotkey;
+extern int detailsKey;
+extern int actionKey;
+extern int navLeftKey;
+extern int navRightKey;
+extern int detailsGamepadKey;
+extern int actionGamepadKey;
+extern int navLeftGamepadKey;
+extern int navRightGamepadKey;
 extern int enableBlur;
 extern bool g_isUltraWide;
 
 inline std::string g_savedTitleRank;
 inline std::string g_savedTitleFaction;
+inline bool g_savedTitleRankOnly = false;
 inline bool g_hasSavedTitle = false;
 
 namespace fs = std::filesystem;
+
+/*
+namespace {
+    struct CullRestoreEntry {
+        RE::NiAVObject* obj;
+        bool wasCulled;
+    };
+
+    static std::vector<CullRestoreEntry> g_cullRestore;
+    static bool g_worldHidden = false;
+}*/
 
 struct QuestRequirement {
     std::string quest;
@@ -49,13 +69,14 @@ static const std::string INI_FILE_PATH = "Data/Character Menu SE.ini";
 
 namespace logger = SKSE::log;
 
+extern RE::Actor* targetActor;
 extern bool forced3rdPerson;
 extern bool rotatedPlayer;
 extern bool fixCameraZoom;
 extern bool sittingPlayer;
 extern bool shouldDisableAnimCam;
-extern float playerAngleX;
-extern float playerRotation;
+extern float targetAngleX;
+extern float targetRotation;
 extern float targetZoomOffset;
 extern RE::NiPoint2 freeRotation;
 extern RE::NiPoint2 g_freeRotation;
@@ -141,7 +162,7 @@ const char* GetPlayerCondition();
 bool IsPluginLoaded(const std::string& pluginName);
 void TogglePlayerControls(bool enable);
 bool GetSurvivalModeEnabled();
-void RotateCamera();
+void RotateCamera(RE::Actor* target);
 void ResetCamera();
 void FreezeNPC(RE::Actor* a_actor);
 void UnfreezeNPC(RE::Actor* a_actor);
@@ -157,7 +178,10 @@ static std::string TrimRightCopy(std::string s);
 std::string RemoveLastDotSentence(std::string text);
 std::string CollapsePercent(std::string s);
 bool IsPlayersMount(const RE::Actor* actor);
+bool IsTargetsMount(const RE::Actor* actor, RE::Actor* target);
 void LoadDataFromINI();
 static bool IsPlayerInFactionWithRank(const std::string& factionEdid);
+//void HideWorld();
+//void ShowWorld();
 
 #endif  // UTILITY_H

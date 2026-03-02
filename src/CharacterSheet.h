@@ -27,6 +27,11 @@ namespace Scaleform {
         virtual void Accept(RE::FxDelegateHandler::CallbackProcessor* a_cbReg) override;
 
         static RE::stl::owner<RE::IMenu*> Creator() { return new CharacterSheet(); }
+        static void SetGenericData(RE::Actor* target, RE::GPtr<RE::IMenu> menu);
+        static void SetAttributes(RE::Actor* target, RE::GPtr<RE::IMenu> menu);
+        static void SetFactions(RE::Actor* target, RE::GPtr<RE::IMenu> menu);
+        static void SetSkills(RE::Actor* target, RE::GPtr<RE::IMenu> menu);
+        static void SetMiscValues(RE::Actor* target, RE::GPtr<RE::IMenu> menu);
 
     private:
         static void PlaySound(const RE::FxDelegateArgs& a_params);
