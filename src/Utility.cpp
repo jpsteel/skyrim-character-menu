@@ -585,6 +585,29 @@ const TESClass* GetBestMatchingClass(const std::vector<TESClass>& classes,
     return bestMatch;
 }
 
+const TESClass* GetApprenticeClass(const std::map<int, TESClass>& classes)
+{
+    const TESClass* instance = &classes.begin()->second;
+
+    const auto dataHandler = RE::TESDataHandler::GetSingleton();
+    auto* classTrackerForm = dataHandler->LookupForm(RE::FormID(0x0F5), "Apprentice.esp");
+
+    if (classTrackerForm)
+    {
+        auto classTracker = classTrackerForm->As<RE::TESGlobal>();
+        int classIndex = static_cast<int>(classTracker->value);
+
+        for (const auto& [id, tesClass] : classes)
+        {
+            if (id == classIndex) {
+                instance = &tesClass;
+            }
+        }
+    }
+
+    return instance;
+}
+
 static bool TryParseStage(const nlohmann::json& jStage, std::int32_t& outStage) {
     try {
         if (jStage.is_number_integer()) {

@@ -260,3 +260,25 @@ std::vector<TESClass> classicClassesFirmament = {
      "$Magic",
      "$Witchhunter_Description"},
 };
+
+std::map<int, TESClass> apprenticeClasses = {
+    {0,  {"-",{},"",""}},
+    {1,  {"$Agent",      {}, "$Stealth", "$Apprentice_Agent_Description"}},
+    {2,  {"$Archer",     {}, "$Combat",  "$Apprentice_Archer_Description"}},
+    {3,  {"$Assassin",   {}, "$Stealth", "$Apprentice_Assassin_Description"}},
+    {4,  {"$Barbarian",  {}, "$Combat",  "$Apprentice_Barbarian_Description"}},
+    {5,  {"$Battlemage", {}, "$Magic",   "$Apprentice_Battlemage_Description"}},
+    {6,  {"$Crusader",   {}, "$Combat",  "$Apprentice_Crusader_Description"}},
+    {7,  {"$Healer",     {}, "$Magic",   "$Apprentice_Healer_Description"}},
+    {8,  {"$Knight",     {}, "$Combat",  "$Apprentice_Knight_Description"}},
+    {9,  {"$Mage",       {}, "$Magic",   "$Apprentice_Mage_Description"}},
+    {10, {"$Monk",       {}, "$Stealth", "$Apprentice_Monk_Description"}},
+    {11, {"$Nightblade", {}, "$Magic",   "$Apprentice_Nightblade_Description"}},
+    {12, {"$Rogue",      {}, "$Stealth", "$Apprentice_Rogue_Description"}},
+    {13, {"$Scout",      {}, "$Stealth", "$Apprentice_Scout_Description"}},
+    {14, {"$Sorcerer",   {}, "$Magic",   "$Apprentice_Sorcerer_Description"}},
+    {15, {"$Spellsword", {}, "$Combat",  "$Apprentice_Spellsword_Description"}},
+    {16, {"$Thief",      {}, "$Stealth", "$Apprentice_Thief_Description"}},
+    {17, {"$Warrior",    {}, "$Combat",  "$Apprentice_Warrior_Description"}},
+    {18, {"$Witchhunter",{}, "$Magic",   "$Apprentice_Witchhunter_Description"}}
+};
