@@ -9,6 +9,15 @@
 
 SKSE::PluginHandle pluginHandle = SKSE::kInvalidPluginHandle;
 
+static bool IsHelgenIntroLocked() {
+    auto* quest = RE::TESForm::LookupByEditorID<RE::TESQuest>("MQ101");
+    if (!quest) {
+        return false;
+    }
+
+    return quest->IsRunning() && quest->GetCurrentStageID() < 250;
+}
+
 RE::BSEventNotifyControl EventProcessor::ProcessEvent(const RE::MenuOpenCloseEvent* event,
                                                       RE::BSTEventSource<RE::MenuOpenCloseEvent>*) {
     if (!event) {
@@ -84,24 +93,18 @@ RE::BSEventNotifyControl EventProcessor::ProcessEvent(const RE::MenuOpenCloseEve
 
             //HideWorld();
 
-            //Camera work
+            // Camera work
             logger::trace("Setting camera.");
-            auto camera = RE::PlayerCamera::GetSingleton();
+            auto* camera = RE::PlayerCamera::GetSingleton();
             if (!camera) {
                 return RE::BSEventNotifyControl::kContinue;
             }
-            // SmoothCam compatibility
-            logger::trace("Setting SmoothCam compatibility.");
-            if (g_SmoothCam && g_SmoothCam->IsCameraEnabled()) {
-                const auto result = g_SmoothCam->RequestCameraControl(pluginHandle);
-                if (result == SmoothCamAPI::APIResult::OK || result == SmoothCamAPI::APIResult::AlreadyGiven) {
-                    g_SmoothCam->RequestInterpolatorUpdates(pluginHandle, true);
-                }
-            }
+
             fixCameraZoom = true;
 
             logger::trace("Rotating camera.");
             RotateCamera(target);
+
             logger::trace("Toggling player controls.");
             TogglePlayerControls(false);
         }
@@ -115,12 +118,6 @@ RE::BSEventNotifyControl EventProcessor::ProcessEvent(const RE::MenuOpenCloseEve
             }
         }
 
-        //ShowWorld();
-
-        // SmoothCam compatibility
-        if (g_SmoothCam && g_SmoothCam->IsCameraEnabled()) {
-            g_SmoothCam->ReleaseCameraControl(pluginHandle);
-        }
         ResetCamera();
         TogglePlayerControls(true);
     }
@@ -151,7 +148,8 @@ RE::BSEventNotifyControl EventProcessor::ProcessEvent(RE::InputEvent* const* eve
             auto ui = RE::UI::GetSingleton();
             if (dxScanCode == menuHotkey && buttonEvent->IsDown()) {
                 if (!ui->IsMenuOpen(Scaleform::CharacterSheet::MENU_NAME) && !ui->GameIsPaused() &&
-                    !ui->IsMenuOpen(RE::DialogueMenu::MENU_NAME)) {
+                    !ui->IsMenuOpen(RE::DialogueMenu::MENU_NAME) && !ui->IsMenuOpen(RE::CraftingMenu::MENU_NAME) &&
+                    !IsHelgenIntroLocked()) {
                     Scaleform::CharacterSheet::Show();
                     return RE::BSEventNotifyControl::kContinue;
                 } else if (ui->IsMenuOpen(Scaleform::CharacterSheet::MENU_NAME)) {

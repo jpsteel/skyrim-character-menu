@@ -8,7 +8,7 @@ cmake_minimum_required(VERSION 3.21)
 
 # [BEGIN set_project_name]
 # Set your project name. This will be the name of your SKSE .dll file.
-project(CharacterSheet VERSION 1.0.0 LANGUAGES CXX)
+project(CharacterSheet VERSION 1.1.0 LANGUAGES CXX)
 
 # [END set_project_name]
 
@@ -38,7 +38,27 @@ endif()
 # set(OUTPUT_FOLDER "C:/path/to/any/folder")
 
 # Setup your SKSE plugin as an SKSE plugin!
-find_package(CommonLibSSE CONFIG REQUIRED)
+set(COMMONLIBSSE_NG_ROOT "" CACHE PATH "Path to CommonLibSSE-NG")
+
+if(NOT COMMONLIBSSE_NG_ROOT AND DEFINED ENV{COMMONLIBSSE_NG_ROOT})
+    set(COMMONLIBSSE_NG_ROOT "$ENV{COMMONLIBSSE_NG_ROOT}")
+endif()
+
+if(NOT EXISTS "${COMMONLIBSSE_NG_ROOT}/CMakeLists.txt")
+    message(FATAL_ERROR "Set COMMONLIBSSE_NG_ROOT to your CommonLibSSE-NG directory")
+endif()
+
+set(ENABLE_SKYRIM_SE ON CACHE BOOL "" FORCE)
+set(ENABLE_SKYRIM_AE ON CACHE BOOL "" FORCE)
+set(ENABLE_SKYRIM_VR OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+
+add_subdirectory(
+    "${COMMONLIBSSE_NG_ROOT}"
+    "${CMAKE_CURRENT_BINARY_DIR}/commonlib"
+)
+
+include("${COMMONLIBSSE_NG_ROOT}/cmake/CommonLibSSE.cmake")
 add_commonlibsse_plugin(${PROJECT_NAME} SOURCES src/main.cpp
     src/Utility.cpp
     src/EventProcessor.cpp
@@ -48,7 +68,7 @@ add_commonlibsse_plugin(${PROJECT_NAME} SOURCES src/main.cpp
     API/APIManager.cpp) # <--- specifies plugin.cpp
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23) # <--- use C++23 standard
 target_precompile_headers(${PROJECT_NAME} PRIVATE src/PCH.h) # <--- PCH.h is required!
-target_include_directories(CharacterSheet
+target_include_directories(${PROJECT_NAME}
     PRIVATE
         src
         API

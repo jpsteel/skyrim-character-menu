@@ -4,8 +4,6 @@
 #include "EventProcessor.h"
 #include "Scaleform.h"
 #include "CharacterSheet.h"
-#define SMOOTHCAM_API_COMMONLIB
-#include "SmoothCamAPI.h"
 #include "APIManager.h"
 #include "Serialization.h"
 

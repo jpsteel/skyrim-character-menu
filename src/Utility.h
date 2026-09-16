@@ -33,17 +33,6 @@ inline bool g_hasSavedTitle = false;
 
 namespace fs = std::filesystem;
 
-/*
-namespace {
-    struct CullRestoreEntry {
-        RE::NiAVObject* obj;
-        bool wasCulled;
-    };
-
-    static std::vector<CullRestoreEntry> g_cullRestore;
-    static bool g_worldHidden = false;
-}*/
-
 struct QuestRequirement {
     std::string quest;
     std::int32_t stage = 0;
@@ -181,7 +170,5 @@ bool IsPlayersMount(const RE::Actor* actor);
 bool IsTargetsMount(const RE::Actor* actor, RE::Actor* target);
 void LoadDataFromINI();
 static bool IsPlayerInFactionWithRank(const std::string& factionEdid);
-//void HideWorld();
-//void ShowWorld();
 
 #endif  // UTILITY_H

@@ -342,11 +342,15 @@ namespace Scaleform {
 
         // STATS
         std::array<RE::GFxValue, 12> statsData;
-        float healRate = (target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kHealRate) / 100) * maxHealth;
+        float healRateMult = target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kHealRateMult) / 100;
+        float healRate = (target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kHealRate) * healRateMult / 100) * maxHealth;
+        float magickaRateMult = target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kMagickaRateMult) / 100;
         float magickaRate =
-            (target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kMagickaRate) / 100) * maxMagicka;
+            (target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kMagickaRate) * magickaRateMult / 100) *
+            maxMagicka;
+        float staminaRateMult = target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStaminaRateMult) / 100;
         float staminaRate =
-            (target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStaminaRate) / 100) * maxStamina;
+            (target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kStaminaRate) * staminaRateMult / 100) * maxStamina;
         float speedMult = target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kSpeedMult);
         // UESP regarding WeaponSpeedMutl AV: "This is an odd modifier because the default is 0 and
         // yet it is a multiplier, meaning 1 = 100%, 0.5 = 50%, 2 = 200% but 0 = also 100%"
@@ -360,7 +364,7 @@ namespace Scaleform {
         float frostResist = target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kResistFrost);
         float shockResist = target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kResistShock);
         float diseaseResist = target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kResistDisease);
-        logger::trace(
+        logger::info(
             "Heal rate: {}\nMagicka rate: {}\nStamina rate: {}\nSpeed mult: {}\nWeapon speed mult: {}\nCritical hit "
             "chance: "
             "{}\nPoison resist: {}\nMagic resist: {}\nFire resist: {}\nFrost resist: {}\nShock resist: {}\nDisease "
@@ -445,11 +449,15 @@ namespace Scaleform {
 
         menu->uiMovie->CreateArray(&skillsArray);
         for (auto av : skills) {
-            auto avInfo = avList->GetActorValue(av);
+            const auto avIndex = std::to_underlying(av);
+            auto* avInfo = avIndex >= 0 && avIndex < std::to_underlying(RE::ActorValue::kTotal)
+                               ? avList->actorValues[static_cast<std::size_t>(avIndex)]
+                               : nullptr;
+
             if (avInfo) {
                 RE::GFxValue skill;
                 menu->uiMovie->CreateObject(&skill);
-                auto name = avInfo->GetFullName();
+                const char* name = avInfo->GetFullName();
                 RE::BSString description;
                 avInfo->GetDescription(description, avInfo);
                 logger::trace("Description: {}", description.c_str());
@@ -594,7 +602,8 @@ namespace Scaleform {
         std::array<RE::GFxValue, 5> miscData;
 
         int playerGold = GetPlayerGold();
-        int armorRating = target->CalcArmorRating();
+        //int armorRating = target->CalcArmorRating();
+        int armorRating = target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kDamageResist);
         float playerWeight = target->GetWeightInContainer();
         int carryWeight = target->AsActorValueOwner()->GetActorValue(RE::ActorValue::kCarryWeight);
         int warmth = -1;

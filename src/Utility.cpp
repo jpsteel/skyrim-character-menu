@@ -1,18 +1,41 @@
 #include "Utility.h"
-#include "Classes.h"
-
-#define SMOOTHCAM_API_COMMONLIB
-#include "SmoothCamAPI.h"
-#include "editorID.hpp"
-//#include "BSSceneGraph.h"
 
 #include <Windows.h>
 #include <spdlog/sinks/basic_file_sink.h>
+
+#include <algorithm>
+#include <cmath>
+
+#include "APIManager.h"
+#include "Classes.h"
+#include "editorID.hpp"
 
 namespace logger = SKSE::log;
 constexpr auto MATH_PI = 3.14159265358979323846f;
 
 static std::vector<FactionDef> g_factionDefs;
+
+static RE::NiPointer<RE::NiAVObject> g_blackPlane;
+static RE::NiPointer<RE::TESObjectREFR> g_backdropRef;
+static RE::NiPoint3 g_savedThirdPersonTranslation;
+static RE::NiPoint3 g_savedPosOffsetActual;
+static float g_savedCurrentZoomOffset;
+static float g_savedZoomOffset;
+static bool g_savedToggleAnimCam = false;
+static bool g_savedFreeRotationEnabled = false;
+static float g_savedPitchZoomOffset = 0.0f;
+static bool g_savedMountCamera = false;
+static bool g_savedMountActorPitchValid = false;
+static float g_savedMountActorPitch = 0.0f;
+static RE::NiPoint2 g_savedMountFreeRotation;
+static RE::NiPoint3 g_savedMountTranslation;
+static RE::NiPoint3 g_savedMountPosOffsetExpected;
+static RE::NiPoint3 g_savedMountPosOffsetActual;
+static float g_savedMountTargetZoomOffset = 0.0f;
+static float g_savedMountCurrentZoomOffset = 0.0f;
+static float g_savedMountSavedZoomOffset = 0.0f;
+static float g_savedTargetYaw = 0.0f;
+static float g_savedCurrentYaw = 0.0f;
 
 int menuHotkey;
 int detailsKey;
@@ -67,6 +90,42 @@ float fNewOverShoulderCombatAddY;
 float fNewOverShoulderCombatPosZ;
 float timescale;
 
+namespace {
+    bool g_smoothCamHasCameraControl = false;
+
+    void AcquireSmoothCamCameraControl() {
+        if (!g_SmoothCam || !g_SmoothCam->IsCameraEnabled() || g_smoothCamHasCameraControl) {
+            return;
+        }
+
+        const auto result = g_SmoothCam->RequestCameraControl(SKSE::GetPluginHandle());
+
+        if (result == SmoothCamAPI::APIResult::OK || result == SmoothCamAPI::APIResult::AlreadyGiven) {
+            g_smoothCamHasCameraControl = true;
+            logger::debug("SmoothCam camera control acquired for character menu.");
+            return;
+        }
+
+        logger::warn("Could not acquire SmoothCam camera control. Result: {}", static_cast<int>(result));
+    }
+
+    void ReleaseSmoothCamCameraControl() {
+        if (!g_SmoothCam || !g_smoothCamHasCameraControl) {
+            return;
+        }
+
+        const auto result = g_SmoothCam->ReleaseCameraControl(SKSE::GetPluginHandle());
+
+        if (result != SmoothCamAPI::APIResult::OK) {
+            logger::warn("Could not release SmoothCam camera control. Result: {}", static_cast<int>(result));
+        } else {
+            logger::debug("SmoothCam camera control released.");
+        }
+
+        g_smoothCamHasCameraControl = false;
+    }
+}
+
 void SetupLog() {
     auto logsFolder = SKSE::log::log_directory();
     if (!logsFolder) SKSE::stl::report_and_fail("SKSE log_directory not provided, logs disabled.");
@@ -83,7 +142,9 @@ float GetPlayerXPProgression() {
     auto player = RE::PlayerCharacter::GetSingleton();
     auto playerXP = player->GetInfoRuntimeData().skills->data->xp;
     auto playerLevelThreshold = player->GetInfoRuntimeData().skills->data->levelThreshold;
-    float levelProgression = round((playerXP / playerLevelThreshold) * 140); // LevelProgresssBar movieclip is made of 140 frames and not 100 for some reason...
+    float levelProgression =
+        round((playerXP / playerLevelThreshold) *
+              140);  // LevelProgresssBar movieclip is made of 140 frames and not 100 for some reason...
     return levelProgression;
 }
 
@@ -243,17 +304,17 @@ void LoadDataFromINI() {
     if (rc < 0) {
         logger::error("Failed to load INI file: {}", INI_FILE_PATH);
         return;
-    } 
+    }
 
-    const char* keycodeStr = ini.GetValue("General", "iOpenMenuKeycode", "49"); // N
-    const char* detailsStr = ini.GetValue("General", "iShowDetailsKeycode", "33");  // F
-    const char* actionStr = ini.GetValue("General", "iActionButtonKeycode", "34");  // G
-    const char* navLeftStr = ini.GetValue("General", "iNavLeft", "16"); // Q
-    const char* navRightStr = ini.GetValue("General", "iNavRight", "19"); // R
+    const char* keycodeStr = ini.GetValue("General", "iOpenMenuKeycode", "49");                    // N
+    const char* detailsStr = ini.GetValue("General", "iShowDetailsKeycode", "33");                 // F
+    const char* actionStr = ini.GetValue("General", "iActionButtonKeycode", "34");                 // G
+    const char* navLeftStr = ini.GetValue("General", "iNavLeft", "16");                            // Q
+    const char* navRightStr = ini.GetValue("General", "iNavRight", "19");                          // R
     const char* detailsGamepadStr = ini.GetValue("General", "iShowDetailsGamepadKeycode", "273");  // RS
     const char* actionGamepadStr = ini.GetValue("General", "iActionButtonGamepadKeycode", "279");  // Y
-    const char* navLeftGamepadStr = ini.GetValue("General", "iNavLeftGamepad", "274"); // LB
-    const char* navRightGamepadStr = ini.GetValue("General", "iNavRightGamepad", "275"); // RB
+    const char* navLeftGamepadStr = ini.GetValue("General", "iNavLeftGamepad", "274");             // LB
+    const char* navRightGamepadStr = ini.GetValue("General", "iNavRightGamepad", "275");           // RB
     const char* enable_blur = ini.GetValue("General", "iEnableBlur", "1");
     menuHotkey = std::stoi(keycodeStr);
     detailsKey = std::stoi(detailsStr);
@@ -269,18 +330,28 @@ void LoadDataFromINI() {
     logger::debug("Loaded blur enabled: {}", enable_blur);
 }
 
-  //////////////////////////////////////////////////////////////////////////////////////////////////////////
- // All credit goes to derickso/myztikrice for the following functions (https://github.com/derickso/ShowPlayerInMenus)
+//////////////////////////////////////////////////////////////////////////////////////////////////////////
+// All credit goes to derickso/myztikrice for the original following functions
+// (https://github.com/derickso/ShowPlayerInMenus)
 //////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 void RotateCamera(RE::Actor* target) {
-    auto camera = RE::PlayerCamera::GetSingleton();
-    auto ini = RE::INISettingCollection::GetSingleton();
+    auto* camera = RE::PlayerCamera::GetSingleton();
+    auto* ini = RE::INISettingCollection::GetSingleton();
     bool isBeastForm = false;
     bool isVampireLord = false;
-    camera->cameraTarget = target;
 
-    auto thirdState = (RE::ThirdPersonState*)camera->cameraStates[RE::CameraState::kThirdPerson].get();
+    auto* thirdState = static_cast<RE::ThirdPersonState*>(camera->cameraStates[RE::CameraState::kThirdPerson].get());
+
+    RE::NiPointer<RE::Actor> targetMount;
+    const bool isMounted = target->GetMount(targetMount);
+
+    auto* mountState =
+        isMounted ? static_cast<RE::HorseCameraState*>(camera->cameraStates[RE::CameraState::kMount].get()) : nullptr;
+
+    AcquireSmoothCamCameraControl();
+
+    camera->cameraTarget = (isMounted && targetMount) ? targetMount.get() : target;
 
     if (target->GetRace() == RE::TESForm::LookupByEditorID<RE::TESRace>("WerewolfBeastRace") ||
         target->GetRace() == RE::TESForm::LookupByEditorID<RE::TESRace>("DLC2WerebearBeastRace")) {
@@ -288,8 +359,8 @@ void RotateCamera(RE::Actor* target) {
     } else if (target->GetRace() == RE::TESForm::LookupByEditorID<RE::TESRace>("DLC1VampireBeastRace")) {
         isVampireLord = true;
     }
-    
-    // collect original values for later
+
+    // Collect original values for later.
     targetActor = target;
     targetAngleX = target->data.angle.x;
     targetRotation = target->data.angle.z;
@@ -299,11 +370,45 @@ void RotateCamera(RE::Actor* target) {
     g_freeRotation = freeRotation;
     timescale = RE::TESForm::LookupByID<RE::TESGlobal>(0x3A)->value;
     posOffsetExpected = thirdState->posOffsetExpected;
+
+    g_savedThirdPersonTranslation = thirdState->translation;
+    g_savedPosOffsetActual = thirdState->posOffsetActual;
+    g_savedCurrentZoomOffset = thirdState->currentZoomOffset;
+    g_savedZoomOffset = thirdState->savedZoomOffset;
+    g_savedTargetYaw = thirdState->targetYaw;
+    g_savedCurrentYaw = thirdState->currentYaw;
+
     if (camera->IsInFirstPerson()) {
         forced3rdPerson = true;
     }
+
+    g_savedMountCamera = false;
+    g_savedMountActorPitchValid = false;
+
+    if (isMounted && targetMount) {
+        g_savedMountActorPitch = targetMount->data.angle.x;
+        g_savedMountActorPitchValid = true;
+    }
+
+    if (isMounted && camera->currentState == camera->cameraStates[RE::CameraState::kMount]) {
+        if (mountState) {
+            g_savedMountFreeRotation = mountState->freeRotation;
+            g_savedMountTranslation = mountState->translation;
+            g_savedMountPosOffsetExpected = mountState->posOffsetExpected;
+            g_savedMountPosOffsetActual = mountState->posOffsetActual;
+            g_savedMountTargetZoomOffset = mountState->targetZoomOffset;
+            g_savedMountCurrentZoomOffset = mountState->currentZoomOffset;
+            g_savedMountSavedZoomOffset = mountState->savedZoomOffset;
+
+            g_savedMountCamera = true;
+        }
+    }
+
+    if (isMounted && targetMount) {
+        targetMount->data.angle.x = 0.1f;
+    }
+
     camera->SetState(thirdState);
-    // camera->UpdateThirdPerson(player->AsActorState()->IsWeaponDrawn());
 
     // set over the shoulder camera values for when player has weapon drawn and unpaused menu(s) in order to prevent
     // camera from snapping
@@ -341,6 +446,10 @@ void RotateCamera(RE::Actor* target) {
 
     // toggle anim cam which unshackles camera and lets it move in front of player with their weapon drawn, necessary if
     // not using TDM
+    g_savedToggleAnimCam = thirdState->toggleAnimCam;
+    g_savedFreeRotationEnabled = thirdState->freeRotationEnabled;
+    g_savedPitchZoomOffset = thirdState->pitchZoomOffset;
+
     thirdState->toggleAnimCam = true;
     thirdState->freeRotationEnabled = true;
 
@@ -361,8 +470,11 @@ void RotateCamera(RE::Actor* target) {
 
     fNewOverShoulderCombatAddY = 0.f;
     auto targetSitState = target->AsActorState()->GetSitSleepState();
-    if (target->IsOnMount()) {
-        fNewOverShoulderCombatPosZ = 35.0f + (target->GetHeight() - 130);
+    auto targetSneakState = target->AsActorState()->IsSneaking();
+    if (isMounted && targetMount) {
+        fNewOverShoulderCombatPosX = g_isUltraWide ? -45.0f : -55.0f;
+        fNewOverShoulderCombatPosZ = 35.0f;
+
         vanityModeMinDist->data.f = 190.0f;
         vanityModeMaxDist->data.f = 190.0f;
     } else if (targetSitState >= RE::SIT_SLEEP_STATE::kWantToSit &&
@@ -370,11 +482,15 @@ void RotateCamera(RE::Actor* target) {
         fNewOverShoulderCombatPosZ = -53.0f + (target->GetHeight() - 130);
         vanityModeMinDist->data.f = 155.0f;
         vanityModeMaxDist->data.f = 155.0f;
-    } 
-    else if (isBeastForm) {
+    } else if (targetSneakState) {
+        fNewOverShoulderCombatPosX = g_isUltraWide ? -38.0f : -50.0f;
+        fNewOverShoulderCombatPosZ = -12.0f + (target->GetHeight() - 128);
+        vanityModeMinDist->data.f = 160.0f;
+        vanityModeMaxDist->data.f = 160.0f;
+    } else if (isBeastForm) {
         fNewOverShoulderCombatPosZ = -32.0f + (target->GetHeight() - 130);
-        vanityModeMinDist->data.f = 200.0f;
-        vanityModeMaxDist->data.f = 200.0f;
+        vanityModeMinDist->data.f = 210.0f;
+        vanityModeMaxDist->data.f = 210.0f;
     } else if (isVampireLord) {
         fNewOverShoulderCombatPosZ = -37.0f + (target->GetHeight() - 128);
         vanityModeMinDist->data.f = 165.0f;
@@ -383,49 +499,26 @@ void RotateCamera(RE::Actor* target) {
         fNewOverShoulderCombatPosZ = -32.0f + (target->GetHeight() - 128);
         vanityModeMinDist->data.f = 165.0f;
         vanityModeMaxDist->data.f = 165.0f;
-    }
-    else {
+    } else {
         fNewOverShoulderCombatPosZ = -22.0f + (target->GetHeight() - 128);
         vanityModeMinDist->data.f = 155.0f;
         vanityModeMaxDist->data.f = 155.0f;
     }
 
     thirdState->freeRotation.x = MATH_PI - 0.5f;
+    thirdState->freeRotation.y = 0.0f;
 
-    if (target->IsOnMount()) {
-        RE::NiPointer<RE::Actor> targetMount;
-        if (target->GetMount(targetMount)) {
-            auto* node = targetMount->Get3D();
+    target->data.angle.x = 0.1f;
 
-            RE::NiMatrix3 rot = node->world.rotate;
-            RE::NiPoint3 forward = rot * RE::NiPoint3{0, 1, 0};
-            forward.Unitize();
-
-            float slope = forward.z;
-            thirdState->freeRotation.y = targetMount.get()->data.angle.x - 0.1f;
-            logger::debug("forward.z: {}", forward.z);
-            
-            if (forward.z < 0) { //going downhill
-                fNewOverShoulderCombatPosX += 70.0f * forward.z;
-                fNewOverShoulderCombatPosZ += 60.0f * forward.z;
-            } else { //going uphill
-                fNewOverShoulderCombatPosX += 40.0f * forward.z;
-                fNewOverShoulderCombatPosZ += 50.0f * forward.z;
-            }
-            vanityModeMinDist->data.f -= 110.0f * forward.z;
-            vanityModeMaxDist->data.f -= 110.0f * forward.z;
-        }
-    } else {
-        thirdState->freeRotation.y = 0.0f;
+    if (isMounted && targetMount) {
+        targetMount->data.angle.x = 0.1f;
     }
 
-    // account for camera freeRotation settings getting pushed into player's pitch (x) values when weapon drawn
-    if (!target->AsActorState()->IsWeaponDrawn())
-        target->data.angle.x = 0.1f;
-    else {
-        target->data.angle.x -= target->data.angle.x - 0.1f;
-    }
-    
+    thirdState->UpdateRotation();
+
+    thirdState->currentYaw = thirdState->targetYaw;
+    camera->yaw = thirdState->currentYaw;
+
     overShoulderCombatPosX->data.f = fNewOverShoulderCombatPosX;
     overShoulderCombatAddY->data.f = fNewOverShoulderCombatAddY;
     overShoulderCombatPosZ->data.f = fNewOverShoulderCombatPosZ;
@@ -447,10 +540,10 @@ void RotateCamera(RE::Actor* target) {
 
     camera->Update();
 
-    //timescale to 0
+    // timescale to 0
     RE::TESForm::LookupByID<RE::TESGlobal>(0x3A)->value = 0.f;
 
-    //disables AI
+    // disables AI
     auto processLists = RE::ProcessLists::GetSingleton();
     if (processLists) {
         for (auto handle : processLists->highActorHandles) {
@@ -462,18 +555,44 @@ void RotateCamera(RE::Actor* target) {
 }
 
 void ResetCamera() {
-    auto camera = RE::PlayerCamera::GetSingleton();
-    auto thirdState = (RE::ThirdPersonState*)camera->cameraStates[RE::CameraState::kThirdPerson].get();
+    auto* camera = RE::PlayerCamera::GetSingleton();
+    auto* thirdState = static_cast<RE::ThirdPersonState*>(camera->cameraStates[RE::CameraState::kThirdPerson].get());
     auto* player = RE::PlayerCharacter::GetSingleton();
+    RE::NiPointer<RE::Actor> playerMount;
+    const bool isMounted = player->GetMount(playerMount);
+    if (g_savedMountActorPitchValid && playerMount) {
+        playerMount->data.angle.x = g_savedMountActorPitch;
+        g_savedMountActorPitchValid = false;
+    }
 
     if (forced3rdPerson) {
-        // to cameraState = (RE::TESCameraState*)camera->cameraStates[m_camStateId].get();
-        const auto firstPersonState =
+        auto* firstPersonState =
             static_cast<RE::FirstPersonState*>(camera->cameraStates[RE::CameraState::kFirstPerson].get());
         camera->SetState(firstPersonState);
     }
+
+    camera->cameraTarget = (isMounted && playerMount) ? playerMount.get() : player;
+
     if (g_prevState) {
         camera->SetState(g_prevState);
+    }
+
+    if (g_savedMountCamera) {
+        auto* mountState = static_cast<RE::HorseCameraState*>(camera->cameraStates[RE::CameraState::kMount].get());
+
+        if (mountState) {
+            mountState->freeRotation = g_savedMountFreeRotation;
+            mountState->UpdateRotation();
+
+            mountState->translation = g_savedMountTranslation;
+            mountState->posOffsetExpected = g_savedMountPosOffsetExpected;
+            mountState->posOffsetActual = g_savedMountPosOffsetActual;
+            mountState->targetZoomOffset = g_savedMountTargetZoomOffset;
+            mountState->currentZoomOffset = g_savedMountCurrentZoomOffset;
+            mountState->savedZoomOffset = g_savedMountSavedZoomOffset;
+        }
+
+        g_savedMountCamera = false;
     }
 
     // restore original values
@@ -481,13 +600,21 @@ void ResetCamera() {
     targetActor->data.angle.z = targetRotation;
     autoVanityModeDelay->data.f = fAutoVanityModeDelay;
     togglePOVDelay->data.f = fTogglePOVDelay;
-    thirdState->toggleAnimCam = false;
+    thirdState->toggleAnimCam = g_savedToggleAnimCam;
+    thirdState->freeRotationEnabled = g_savedFreeRotationEnabled;
+    thirdState->pitchZoomOffset = g_savedPitchZoomOffset;
+    thirdState->targetYaw = g_savedTargetYaw;
+    thirdState->currentYaw = g_savedCurrentYaw;
+    thirdState->translation = g_savedThirdPersonTranslation;
     thirdState->targetZoomOffset = targetZoomOffset;
+    thirdState->currentZoomOffset = g_savedCurrentZoomOffset;
+    thirdState->savedZoomOffset = g_savedZoomOffset;
     thirdState->freeRotation = freeRotation;
     vanityModeMinDist->data.f = fVanityModeMinDist;
     vanityModeMaxDist->data.f = fVanityModeMaxDist;
     camera->worldFOV = worldFOV;
-    thirdState->posOffsetExpected = thirdState->posOffsetActual = posOffsetExpected;
+    thirdState->posOffsetExpected = posOffsetExpected;
+    thirdState->posOffsetActual = g_savedPosOffsetActual;
     overShoulderCombatPosX->data.f = fOverShoulderCombatPosX;
     overShoulderCombatAddY->data.f = fOverShoulderCombatAddY;
     overShoulderCombatPosZ->data.f = fOverShoulderCombatPosZ;
@@ -497,19 +624,20 @@ void ResetCamera() {
 
     forced3rdPerson = false;
 
-    camera->cameraTarget = player;
-
     camera->Update();
 
     // camera->Update() function uses this value, so restore it after we've updated the camera
     mouseWheelZoomSpeed->data.f = fMouseWheelZoomSpeed;
 
+    // Gameplay camera fully restored, SmoothCam can take control again
+    ReleaseSmoothCamCameraControl();
+
     rotatedPlayer = false;
 
-    //setting timescale back to its former value
+    // setting timescale back to its former value
     RE::TESForm::LookupByID<RE::TESGlobal>(0x3A)->value = timescale;
 
-    //re-enables AI
+    // re-enables AI
     auto processLists = RE::ProcessLists::GetSingleton();
     if (processLists) {
         for (auto handle : processLists->highActorHandles) {
@@ -523,12 +651,12 @@ void ResetCamera() {
     targetActor = player;
 }
 
-//credit goes to powerofthree for the freeze and unfreeze functions (https://github.com/powerof3/ClassicParalysis)
+// credit goes to powerofthree for the freeze and unfreeze functions (https://github.com/powerof3/ClassicParalysis)
 void FreezeNPC(RE::Actor* a_actor) {
-    a_actor->PauseCurrentDialogue();
-    //a_actor->InterruptCast(false);
-    //a_actor->StopInteractingQuick(true);
-    
+    // a_actor->PauseCurrentDialogue();
+    // a_actor->InterruptCast(false);
+    // a_actor->StopInteractingQuick(true);
+
     if (const auto currentProcess = a_actor->GetActorRuntimeData().currentProcess) {
         currentProcess->ClearMuzzleFlashes();
     }
@@ -566,12 +694,12 @@ const TESClass* GetBestMatchingClass(const std::vector<TESClass>& classes,
 
     for (const auto& tesClass : classes) {
         float score = 0.0f;
-        //logger::info("CLASS: {}", tesClass.name);
+        // logger::info("CLASS: {}", tesClass.name);
         for (auto skill : tesClass.majorSkills) {
-            //logger::info("-------{}", skill);
+            // logger::info("-------{}", skill);
             auto it = skillLevels.find(skill);
             if (it != skillLevels.end()) {
-                //logger::info("-------lvl{}", it->second);
+                // logger::info("-------lvl{}", it->second);
                 score += it->second;
             }
         }
@@ -685,7 +813,6 @@ static bool LoadFactionFile(const fs::path& path, FactionDef& out) {
         out.ranks.emplace_back(std::move(rank));
     }
 
-
     if (out.ranks.empty()) {
         logger::warn("Faction '{}' has no valid ranks: {}", out.id, path.string());
     }
@@ -717,7 +844,6 @@ static bool AreRankRequirementsMet(const FactionRankDef& rank) {
     }
 }
 
-
 void LoadFactionDefinitions() {
     g_factionDefs.clear();
 
@@ -739,7 +865,8 @@ void LoadFactionDefinitions() {
 
             FactionDef def;
             if (LoadFactionFile(p, def)) {
-                logger::trace("Loaded faction '{}' ({} ranks) from {}", def.id, def.ranks.size(), p.filename().string());
+                logger::trace("Loaded faction '{}' ({} ranks) from {}", def.id, def.ranks.size(),
+                              p.filename().string());
                 g_factionDefs.emplace_back(std::move(def));
                 ++loaded;
             }
@@ -879,97 +1006,3 @@ static bool IsPlayerInFactionWithRank(const std::string& factionEdid) {
 
     return found;
 }
-
-/*
-namespace {
-    static RE::BSSceneGraph* GetWorldBSSceneGraph() {
-        auto* cam = RE::Main::WorldRootCamera();
-        if (!cam) {
-            return nullptr;
-        }
-
-        for (RE::NiAVObject* p = cam; p; p = p->parent) {
-            if (auto* sg = skyrim_cast<RE::BSSceneGraph*>(p)) {
-                return sg;
-            }
-        }
-
-        return nullptr;
-    }
-
-    static void SetCulledTracked(RE::NiAVObject* obj, bool culled) {
-        if (!obj) return;
-
-        for (auto& e : g_cullRestore) {
-            if (e.obj == obj) {
-                obj->SetAppCulled(culled);
-                return;
-            }
-        }
-
-        g_cullRestore.push_back({obj, obj->GetAppCulled()});
-        obj->SetAppCulled(culled);
-    }
-
-    static void SetCulledRecursiveTracked(RE::NiAVObject* obj, bool culled) {
-        if (!obj) return;
-
-        SetCulledTracked(obj, culled);
-
-        if (auto* node = obj->AsNode()) {
-            for (auto& child : node->GetChildren()) {
-                SetCulledRecursiveTracked(child.get(), culled);
-            }
-        }
-    }
-
-    static void UncullParentChainTracked(RE::NiAVObject* obj, RE::NiAVObject* stopAt) {
-        for (auto* p = obj ? obj->parent : nullptr; p; p = p->parent) {
-            SetCulledTracked(p, false);
-            if (p == stopAt) {
-                break;
-            }
-        }
-    }
-}
-
-void HideWorld() {
-    if (g_worldHidden) {
-        return;
-    }
-
-    g_cullRestore.clear();
-
-    auto* sg = GetWorldBSSceneGraph();
-    if (!sg) return;
-
-    auto* player = RE::PlayerCharacter::GetSingleton();
-    auto* player3D = player ? player->Get3D() : nullptr;
-    if (!player3D) return;
-
-    // Hide whole world
-    SetCulledRecursiveTracked(sg, true);
-
-    // Bring player back
-    SetCulledRecursiveTracked(player3D, false);
-    UncullParentChainTracked(player3D, sg);
-
-    g_worldHidden = true;
-}
-
-
-void ShowWorld() {
-    if (!g_worldHidden) {
-        return;
-    }
-
-    // Restore original states in reverse order
-    for (auto it = g_cullRestore.rbegin(); it != g_cullRestore.rend(); ++it) {
-        if (it->obj) {
-            it->obj->SetAppCulled(it->wasCulled);
-        }
-    }
-
-    g_cullRestore.clear();
-    g_worldHidden = false;
-}*/
