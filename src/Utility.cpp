@@ -652,15 +652,18 @@ void ResetCamera() {
 }
 
 // credit goes to powerofthree for the freeze and unfreeze functions (https://github.com/powerof3/ClassicParalysis)
+// and colinswrath for improvements
 void FreezeNPC(RE::Actor* a_actor) {
-    // a_actor->PauseCurrentDialogue();
-    // a_actor->InterruptCast(false);
-    // a_actor->StopInteractingQuick(true);
-
     if (const auto currentProcess = a_actor->GetActorRuntimeData().currentProcess) {
+        if (currentProcess->high->doorActivated || currentProcess->high->approachingAutoTeleportDoor ||
+            currentProcess->high->fadeState == RE::HighProcessData::FADE_STATE::kTeleportOut)  // unk470 = doorActivated
+        {
+            // If going through load door we do not want to freeze
+            return;
+        }
         currentProcess->ClearMuzzleFlashes();
     }
-
+    a_actor->StopCurrentDialogue();
     a_actor->GetActorRuntimeData().boolFlags.reset(RE::Actor::BOOL_FLAGS::kShouldAnimGraphUpdate);
 
     if (const auto charController = a_actor->GetCharController(); charController) {
@@ -671,8 +674,8 @@ void FreezeNPC(RE::Actor* a_actor) {
     }
 
     a_actor->EnableAI(false);
-    a_actor->StopMoving(1.0f);
 }
+
 
 void UnfreezeNPC(RE::Actor* a_actor) {
     a_actor->GetActorRuntimeData().boolFlags.set(RE::Actor::BOOL_FLAGS::kShouldAnimGraphUpdate);
@@ -680,11 +683,19 @@ void UnfreezeNPC(RE::Actor* a_actor) {
     if (const auto charController = a_actor->GetCharController()) {
         charController->flags.reset(RE::CHARACTER_FLAGS::kNotPushable);
 
-        charController->flags.set(RE::CHARACTER_FLAGS::kRecordHits);
-        charController->flags.set(RE::CHARACTER_FLAGS::kHitFlags);
+        //charController->flags.set(RE::CHARACTER_FLAGS::kRecordHits);
+        //charController->flags.set(RE::CHARACTER_FLAGS::kHitFlags);
     }
 
     a_actor->EnableAI(true);
+}
+
+void CancelPlayerAutoMove() {
+    auto* controls = RE::PlayerControls::GetSingleton();
+    if (!controls) {
+        return;
+    }
+    controls->data.autoMove = false;
 }
 
 const TESClass* GetBestMatchingClass(const std::vector<TESClass>& classes,

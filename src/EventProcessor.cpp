@@ -7,7 +7,7 @@
 #include "APIManager.h"
 #include "CustomSkills.h"
 
-SKSE::PluginHandle pluginHandle = SKSE::kInvalidPluginHandle;
+SKSE::PluginHandle pluginHandle = static_cast<SKSE::PluginHandle>(-1);
 
 static bool IsHelgenIntroLocked() {
     auto* quest = RE::TESForm::LookupByEditorID<RE::TESQuest>("MQ101");
@@ -15,7 +15,7 @@ static bool IsHelgenIntroLocked() {
         return false;
     }
 
-    return quest->IsRunning() && quest->GetCurrentStageID() < 250;
+    return quest->IsRunning() && quest->GetCurrentStageID() > 0 && quest->GetCurrentStageID() < 250;
 }
 
 RE::BSEventNotifyControl EventProcessor::ProcessEvent(const RE::MenuOpenCloseEvent* event,
@@ -150,6 +150,7 @@ RE::BSEventNotifyControl EventProcessor::ProcessEvent(RE::InputEvent* const* eve
                 if (!ui->IsMenuOpen(Scaleform::CharacterSheet::MENU_NAME) && !ui->GameIsPaused() &&
                     !ui->IsMenuOpen(RE::DialogueMenu::MENU_NAME) && !ui->IsMenuOpen(RE::CraftingMenu::MENU_NAME) &&
                     !IsHelgenIntroLocked()) {
+                    CancelPlayerAutoMove();
                     Scaleform::CharacterSheet::Show();
                     return RE::BSEventNotifyControl::kContinue;
                 } else if (ui->IsMenuOpen(Scaleform::CharacterSheet::MENU_NAME)) {
